@@ -47,6 +47,9 @@ enum Action {
         /// merge result file / %merged
         #[clap(value_parser)]
         merged: PathBuf,
+        /// use(copy) `second_cfg` as `merged`(result) (default is `base_cfg`)
+        #[clap(short = 's', long, action)]
+        from_second: bool,
     },
 }
 
@@ -116,9 +119,11 @@ fn command_merge(
     mut merged: PathBuf,
     remove_files: bool,
     rename_files: bool,
+    from_second: bool,
 ) -> Result<i32> {
     let merged_orig = merged.clone();
-    fs::copy(&base_cfg, &merged)?;
+    let default_src = if from_second { &base_cfg } else { &second_cfg };
+    fs::copy(default_src, &merged)?;
 
     let mut files = [
         &mut base_cfg,
@@ -167,6 +172,7 @@ fn main() -> Result<()> {
             second_cfg,
             old_vendor_cfg,
             merged,
+            from_second,
         } => command_merge(
             base_cfg,
             second_cfg,
@@ -174,6 +180,7 @@ fn main() -> Result<()> {
             merged,
             cli.remove_files,
             cli.rename_files,
+            from_second,
         )?,
     };
 
