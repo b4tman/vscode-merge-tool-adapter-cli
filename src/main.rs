@@ -53,13 +53,16 @@ enum Action {
     },
 }
 
+/// command to launch VSCode
 #[cfg(windows)]
 const CODE_CMD: &str = "code.cmd";
 #[cfg(not(windows))]
 const CODE_CMD: &str = "code";
+/// commond args for VSCode
 const COMMON_CODE_ARGS: [&str; 4] = ["--new-window", "--sync", "off", "--wait"];
 const CODE_CMD_DIFF: &str = "--diff";
 const CODE_CMD_MERGE: &str = "--merge";
+/// filename extension for syntax highlights
 const EXTENSION_BSL: &str = "bsl";
 
 /// copy/rename mutable slice of files (set extension)
