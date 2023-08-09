@@ -1,0 +1,20 @@
+[package]
+name = "vscode-merge-tool-adapter"
+description = "Adapter for using VSCode as a diff/merge tool for 1C:Enterprise designer application"
+repository = "https://github.com/b4tman/vscode-merge-tool-adapter-cli"
+readme = "README.md"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+anyhow = "1.0.72"
+clap = { version = "4.3.21", features = ["derive"] }
+
+[profile.release]
+opt-level = "s"
+debug = false
+lto = true
+strip = true
+codegen-units=1
