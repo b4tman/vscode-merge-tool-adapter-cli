@@ -125,7 +125,7 @@ fn command_merge(
     from_second: bool,
 ) -> Result<i32> {
     let merged_orig = merged.clone();
-    let default_src = if from_second { &base_cfg } else { &second_cfg };
+    let default_src = if from_second { &second_cfg } else { &base_cfg };
     fs::copy(default_src, &merged)?;
 
     let mut files = [
