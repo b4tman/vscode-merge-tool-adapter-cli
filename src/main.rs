@@ -1,10 +1,14 @@
 //#![windows_subsystem = "windows"]
 
+#[macro_use]
+extern crate lazy_static;
+
 use anyhow::Result;
 use clap::{Parser, Subcommand};
 
 use std::vec;
 use std::{fs, path::PathBuf, process};
+use which::which;
 
 #[derive(Parser, Debug)]
 #[clap(author, version, about, long_about = None)]
@@ -53,11 +57,11 @@ enum Action {
     },
 }
 
-/// command to launch VSCode
-#[cfg(windows)]
-const CODE_CMD: &str = "code.cmd";
-#[cfg(not(windows))]
-const CODE_CMD: &str = "code";
+lazy_static! {
+    /// command to launch VSCode
+    static ref CODE_CMD: PathBuf = which("code").expect(r#"no "code" found in path"#);
+}
+
 /// commond args for VSCode
 const COMMON_CODE_ARGS: [&str; 4] = ["--new-window", "--sync", "off", "--wait"];
 const CODE_CMD_DIFF: &str = "--diff";
@@ -105,7 +109,9 @@ fn command_diff(
     args.push(CODE_CMD_DIFF);
     args.extend(files.iter().map(|p| p.to_str().unwrap()));
 
-    let status = process::Command::new(CODE_CMD).args(args).status()?;
+    let status = process::Command::new(CODE_CMD.as_os_str())
+        .args(args)
+        .status()?;
 
     if remove_files {
         remove_all_files(files.into_iter())?;
@@ -150,7 +156,9 @@ fn command_merge(
     args.push(CODE_CMD_MERGE);
     args.extend(files.iter().map(|p| p.to_str().unwrap()));
 
-    let status = process::Command::new(CODE_CMD).args(args).status()?;
+    let status = process::Command::new(CODE_CMD.as_os_str())
+        .args(args)
+        .status()?;
 
     if merged_orig != merged_new {
         fs::rename(merged_new, merged_orig)?;
