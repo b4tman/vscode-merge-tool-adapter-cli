@@ -1,5 +1,3 @@
-//#![windows_subsystem = "windows"]
-
 #[macro_use]
 extern crate lazy_static;
 
