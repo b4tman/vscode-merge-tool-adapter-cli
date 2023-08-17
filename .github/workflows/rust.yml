@@ -10,8 +10,7 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  build:
-
+  build-ubuntu:
     runs-on: ubuntu-latest
 
     steps:
@@ -25,3 +24,27 @@ jobs:
 
     - name: Run unit tests
       run: cargo test
+
+  build-windows:
+    runs-on: windows-latest
+
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Build
+      run: cargo build --verbose
+
+    - name: Check formatting
+      run: cargo fmt --check
+
+    - name: Run unit tests
+      run: cargo test
+
+    - name: Build release
+      run: cargo build --release
+
+    - uses: actions/upload-artifact@v3
+      with:
+        name: vscode-merge-tool-adapter
+        path: target/release/vscode-merge-tool-adapter.exe
+        if-no-files-found: error
