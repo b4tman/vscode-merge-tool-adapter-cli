@@ -1,12 +1,18 @@
-#[macro_use]
-extern crate lazy_static;
-
 use anyhow::Result;
 use clap::{Parser, Subcommand};
+use utils::{remove_all_files, set_ext_to_all, VSCodeComand, WrappedCommand};
 
 use std::vec;
 use std::{fs, path::PathBuf, process};
-use which::which;
+
+mod utils;
+
+/// commond args for VSCode
+pub const COMMON_CODE_ARGS: [&str; 4] = ["--new-window", "--sync", "off", "--wait"];
+pub const CODE_CMD_DIFF: &str = "--diff";
+pub const CODE_CMD_MERGE: &str = "--merge";
+/// filename extension for syntax highlights
+pub const EXTENSION_BSL: &str = "bsl";
 
 #[derive(Parser, Debug)]
 #[clap(author, version, about, long_about = None)]
@@ -55,143 +61,113 @@ enum Action {
     },
 }
 
-lazy_static! {
-    /// command to launch VSCode
-    static ref CODE_CMD: PathBuf = which("code").expect(r#"no "code" found in path"#);
-}
-
-/// commond args for VSCode
-const COMMON_CODE_ARGS: [&str; 4] = ["--new-window", "--sync", "off", "--wait"];
-const CODE_CMD_DIFF: &str = "--diff";
-const CODE_CMD_MERGE: &str = "--merge";
-/// filename extension for syntax highlights
-const EXTENSION_BSL: &str = "bsl";
-
-/// copy/rename mutable slice of files (set extension)
-fn set_ext_to_all(files: &mut [&mut PathBuf], extension: &str, rename_files: bool) -> Result<()> {
-    for file in files.iter_mut() {
-        let src = file.clone();
-        file.set_extension(extension);
-        if src.extension() == file.extension() {
-            continue;
-        }
-        if rename_files {
-            fs::rename(src, &file)?;
-        } else {
-            fs::copy(src, &file)?;
-        }
-    }
-    Ok(())
-}
-
-/// remove files
-fn remove_all_files<'a, I: Iterator<Item = &'a mut PathBuf>>(files: I) -> Result<()> {
-    for file in files {
-        fs::remove_file(file)?
-    }
-    Ok(())
-}
-
-/// diff 2 files
-fn command_diff(
-    mut base_cfg: PathBuf,
-    mut second_cfg: PathBuf,
+struct Program<C: WrappedCommand> {
     remove_files: bool,
     rename_files: bool,
-) -> Result<i32> {
-    let mut files = [&mut base_cfg, &mut second_cfg];
-    set_ext_to_all(&mut files, EXTENSION_BSL, rename_files)?;
-
-    let mut args: Vec<&str> = vec![];
-    args.extend_from_slice(&COMMON_CODE_ARGS);
-    args.push(CODE_CMD_DIFF);
-    args.extend(files.iter().map(|p| p.to_str().unwrap()));
-
-    let status = process::Command::new(CODE_CMD.as_os_str())
-        .args(args)
-        .status()?;
-
-    if remove_files {
-        remove_all_files(files.into_iter())?;
-    }
-
-    Ok(status.code().unwrap_or_default())
+    vscmd: C,
+    action: Option<Action>,
 }
 
-/// merge 3 files into 1
-fn command_merge(
-    mut base_cfg: PathBuf,
-    mut second_cfg: PathBuf,
-    mut old_vendor_cfg: PathBuf,
-    mut merged: PathBuf,
-    remove_files: bool,
-    rename_files: bool,
-    from_second: bool,
-) -> Result<i32> {
-    let merged_orig = merged.clone();
-    let default_src = if from_second { &second_cfg } else { &base_cfg };
-    fs::copy(default_src, &merged)?;
-
-    let mut files = [
-        &mut base_cfg,
-        &mut second_cfg,
-        &mut old_vendor_cfg,
-        &mut merged,
-    ];
-    set_ext_to_all(&mut files, EXTENSION_BSL, rename_files)?;
-
-    let merged_new = merged.clone();
-
-    let files = [
-        &mut base_cfg,
-        &mut second_cfg,
-        &mut old_vendor_cfg,
-        &mut merged,
-    ];
-
-    let mut args: Vec<&str> = vec![];
-    args.extend_from_slice(&COMMON_CODE_ARGS);
-    args.push(CODE_CMD_MERGE);
-    args.extend(files.iter().map(|p| p.to_str().unwrap()));
-
-    let status = process::Command::new(CODE_CMD.as_os_str())
-        .args(args)
-        .status()?;
-
-    if merged_orig != merged_new {
-        fs::rename(merged_new, merged_orig)?;
+impl<C: WrappedCommand> Program<C> {
+    fn new(cli: Cli, vscmd: C) -> Self {
+        Self {
+            remove_files: cli.remove_files,
+            rename_files: cli.rename_files,
+            vscmd,
+            action: Some(cli.command),
+        }
     }
 
-    if remove_files {
-        remove_all_files(files.into_iter().take(3))?;
+    /// diff 2 files
+    fn command_diff(&mut self, mut base_cfg: PathBuf, mut second_cfg: PathBuf) -> Result<i32> {
+        let mut files = [&mut base_cfg, &mut second_cfg];
+        set_ext_to_all(&mut files, EXTENSION_BSL, self.rename_files)?;
+
+        let mut args: Vec<&str> = vec![];
+        args.extend_from_slice(&COMMON_CODE_ARGS);
+        args.push(CODE_CMD_DIFF);
+        args.extend(files.iter().map(|p| p.to_str().unwrap()));
+
+        let status = self.vscmd.args(args).status()?;
+
+        if self.remove_files {
+            remove_all_files(files.into_iter())?;
+        }
+
+        Ok(status.code().unwrap_or_default())
     }
 
-    Ok(status.code().unwrap_or_default())
+    /// merge 3 files into 1
+    fn command_merge(
+        &mut self,
+        mut base_cfg: PathBuf,
+        mut second_cfg: PathBuf,
+        mut old_vendor_cfg: PathBuf,
+        mut merged: PathBuf,
+        from_second: bool,
+    ) -> Result<i32> {
+        let merged_orig = merged.clone();
+        let default_src = if from_second { &second_cfg } else { &base_cfg };
+        fs::copy(default_src, &merged)?;
+
+        let mut files = [
+            &mut base_cfg,
+            &mut second_cfg,
+            &mut old_vendor_cfg,
+            &mut merged,
+        ];
+        set_ext_to_all(&mut files, EXTENSION_BSL, self.rename_files)?;
+
+        let merged_new = merged.clone();
+
+        let files = [
+            &mut base_cfg,
+            &mut second_cfg,
+            &mut old_vendor_cfg,
+            &mut merged,
+        ];
+
+        let mut args: Vec<&str> = vec![];
+        args.extend_from_slice(&COMMON_CODE_ARGS);
+        args.push(CODE_CMD_MERGE);
+        args.extend(files.iter().map(|p| p.to_str().unwrap()));
+
+        let status = self.vscmd.args(args).status()?;
+
+        if merged_orig != merged_new {
+            fs::rename(merged_new, merged_orig)?;
+        }
+
+        if self.remove_files {
+            remove_all_files(files.into_iter().take(3))?;
+        }
+
+        Ok(status.code().unwrap_or_default())
+    }
+
+    fn run(&mut self) -> Result<i32> {
+        match self.action.take().unwrap() {
+            Action::Diff {
+                base_cfg,
+                second_cfg,
+            } => self.command_diff(base_cfg, second_cfg),
+            Action::Merge {
+                base_cfg,
+                second_cfg,
+                old_vendor_cfg,
+                merged,
+                from_second,
+            } => self.command_merge(base_cfg, second_cfg, old_vendor_cfg, merged, from_second),
+        }
+    }
 }
 
 fn main() -> Result<()> {
     let cli = Cli::parse();
-    let status_code = match cli.command {
-        Action::Diff {
-            base_cfg,
-            second_cfg,
-        } => command_diff(base_cfg, second_cfg, cli.remove_files, cli.rename_files)?,
-        Action::Merge {
-            base_cfg,
-            second_cfg,
-            old_vendor_cfg,
-            merged,
-            from_second,
-        } => command_merge(
-            base_cfg,
-            second_cfg,
-            old_vendor_cfg,
-            merged,
-            cli.remove_files,
-            cli.rename_files,
-            from_second,
-        )?,
-    };
+    let vscmd = VSCodeComand::new();
+
+    let mut program = Program::new(cli, vscmd);
+    let status_code = program.run()?;
 
     process::exit(status_code);
 }
