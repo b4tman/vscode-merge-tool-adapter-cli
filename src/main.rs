@@ -171,3 +171,14 @@ fn main() -> Result<()> {
 
     process::exit(status_code);
 }
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn verify_cli() {
+        use clap::CommandFactory;
+        Cli::command().debug_assert()
+    }
+}
